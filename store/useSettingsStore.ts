@@ -14,13 +14,18 @@ type SettingsState = {
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
-      autoPlay: true, // default ON
+      autoPlay: false, // default OFF — tap the speaker to listen
       ttsSpeed: 1,
       setAutoPlay: (autoPlay) => set({ autoPlay }),
       setTtsSpeed: (ttsSpeed) => set({ ttsSpeed }),
     }),
     {
       name: 'app_settings',
+      version: 1,
+      // v0 shipped with auto-play defaulting ON. v1 makes tap-to-listen the
+      // default, so flip any previously-persisted ON to OFF on upgrade — existing
+      // installs match the new behavior (users can re-enable it in Settings).
+      migrate: (persisted) => ({ ...(persisted as SettingsState), autoPlay: false }),
       storage: createJSONStorage(() => AsyncStorage),
     }
   )

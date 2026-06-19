@@ -3,7 +3,6 @@ import { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   Text,
   TextInput,
@@ -38,7 +37,7 @@ export const TypeToTranslateSheet = ({ visible, sourceLangName, onClose, onSubmi
         onPress={onClose}
         style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}
       >
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0}>
           <Pressable
             onPress={() => {}}
             style={{
@@ -70,7 +69,7 @@ export const TypeToTranslateSheet = ({ visible, sourceLangName, onClose, onSubmi
               style={{
                 ...typography.bodyLg,
                 color: colors.textPrimary,
-                minHeight: 96,
+                minHeight: 200,
                 textAlignVertical: 'top',
                 marginTop: 8,
               }}

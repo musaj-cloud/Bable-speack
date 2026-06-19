@@ -1,5 +1,5 @@
-import { MaterialIcons } from '@expo/vector-icons';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { Text, View } from 'react-native';
+import { SpeakerButton } from '@/components/SpeakerButton';
 import { typography } from '@/constants/typography';
 import { useTheme } from '@/hooks/useTheme';
 
@@ -8,6 +8,10 @@ type Props = {
   text: string;
   variant: 'source' | 'target';
   onSpeak?: () => void;
+  speakAvailable?: boolean; // false when the target language has no offline voice
+  speaking?: boolean; // true while this card's translation is playing aloud
+  speakLoading?: boolean; // true while the voice is synthesizing
+  speakPaused?: boolean; // true while this card's playback is paused
   showWaveform?: boolean;
 };
 
@@ -15,7 +19,17 @@ type Props = {
 const WAVE_BARS = [16, 24, 12, 20, 10];
 
 // Translation card: white "source" card or accent "target" card with speaker.
-export const TranslationCard = ({ langName, text, variant, onSpeak, showWaveform }: Props) => {
+export const TranslationCard = ({
+  langName,
+  text,
+  variant,
+  onSpeak,
+  speakAvailable = true,
+  speaking = false,
+  speakLoading = false,
+  speakPaused = false,
+  showWaveform,
+}: Props) => {
   const colors = useTheme();
   const isTarget = variant === 'target';
 
@@ -39,20 +53,17 @@ export const TranslationCard = ({ langName, text, variant, onSpeak, showWaveform
       <View className="flex-row items-center justify-between mb-3">
         <Text style={{ ...typography.label, color: labelColor }}>{langName}</Text>
         {isTarget && onSpeak && (
-          <TouchableOpacity
+          <SpeakerButton
             onPress={onSpeak}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="Play translation"
-            style={{ width: 32, height: 32, borderRadius: 16 }}
-            className="items-center justify-center"
-          >
-            <MaterialIcons name="volume-up" size={22} color="#ffffff" />
-          </TouchableOpacity>
+            available={speakAvailable}
+            speaking={speaking}
+            loading={speakLoading}
+            paused={speakPaused}
+          />
         )}
       </View>
 
-      <Text style={{ ...typography.h3, fontSize: 24, lineHeight: 32, color: textColor }}>
+      <Text style={{ ...typography.h3, fontSize: 16, lineHeight: 23, color: textColor }}>
         {text}
       </Text>
 

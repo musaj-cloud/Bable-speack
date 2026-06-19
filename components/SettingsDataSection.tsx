@@ -1,13 +1,15 @@
 import { Alert } from 'react-native';
 import { SettingsRow } from '@/components/SettingsRow';
 import { SettingsSection } from '@/components/SettingsSection';
+import { useHistoryStore } from '@/store/useHistoryStore';
 import { useOnboardingStore } from '@/store/useOnboardingStore';
 
 // DATA section: on-device storage usage + destructive clear-history action.
-// History lives in SQLite (Phase 4); for now the clear action confirms intent.
+// History lives in SQLite (Phase 4); clearing wipes the translations table.
 export const SettingsDataSection = () => {
   const setCompleted = useOnboardingStore((s) => s.setCompleted);
   const setHomeSeen = useOnboardingStore((s) => s.setHomeSeen);
+  const clearHistory = useHistoryStore((s) => s.clear);
 
   const confirmClear = () =>
     Alert.alert(
@@ -15,7 +17,7 @@ export const SettingsDataSection = () => {
       'This permanently deletes every saved translation from this device. This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Clear', style: 'destructive', onPress: () => {} },
+        { text: 'Clear', style: 'destructive', onPress: () => void clearHistory() },
       ]
     );
 

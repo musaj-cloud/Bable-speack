@@ -23,7 +23,12 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#070A13"
       },
-      "package": "com.muhaj_dev.babelspeak"
+      "package": "com.muhaj_dev.babelspeak",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.CAMERA"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -40,7 +45,27 @@
           }
         }
       ],
-      "@qvac/sdk/expo-plugin"
+      "@qvac/sdk/expo-plugin",
+      "expo-sqlite",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "BabelSpeak uses the microphone to translate your speech on device. Audio never leaves your phone."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "BabelSpeak uses the camera to read and translate text on device. Photos never leave your phone."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "BabelSpeak reads text from photos you pick and translates it on device. Images never leave your phone."
+        }
+      ],
+      "expo-stream-audio"
     ],
     "experiments": {
       "typedRoutes": true
@@ -48,8 +73,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "3d256611-093a-4887-bf00-5e8294112de1"
+        "projectId": "20659123-1c77-49d2-872a-66954ce1c20d"
       }
-    }
+    },
+    "owner": "holawale"
   }
 }

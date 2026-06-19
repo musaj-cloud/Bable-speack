@@ -5,7 +5,12 @@ import { useTheme } from '@/hooks/useTheme';
 type IconName = keyof typeof MaterialIcons.glyphMap;
 
 type SideButton = { icon: IconName; label: string; onPress: () => void };
-type CenterButton = SideButton & { active?: boolean };
+type CenterButton = Omit<SideButton, 'onPress'> & {
+  onPress?: () => void;
+  onPressIn?: () => void;
+  onPressOut?: () => void;
+  active?: boolean;
+};
 
 type Props = {
   left: SideButton;
@@ -37,6 +42,8 @@ export const ActionBar = ({ left, center, right }: Props) => {
 
       <TouchableOpacity
         onPress={center.onPress}
+        onPressIn={center.onPressIn}
+        onPressOut={center.onPressOut}
         activeOpacity={0.85}
         accessibilityRole="button"
         accessibilityLabel={center.label}

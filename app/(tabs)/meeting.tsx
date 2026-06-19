@@ -1,45 +1,65 @@
-import { useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { HistoryShortcut } from '@/components/HistoryShortcut';
 import { HomeHeader } from '@/components/HomeHeader';
-import { LiveSummaryPanel } from '@/components/LiveSummaryPanel';
-import { MeetingWaveform } from '@/components/MeetingWaveform';
+import { LanguageBar } from '@/components/LanguageBar';
+import { MeetingControls } from '@/components/MeetingControls';
+import { MeetingEmptyState } from '@/components/MeetingEmptyState';
+import { MeetingTranscript } from '@/components/MeetingTranscript';
 import { RecordingStatus } from '@/components/RecordingStatus';
-import { TranscriptBubble } from '@/components/TranscriptBubble';
-import { TypingIndicator } from '@/components/TypingIndicator';
-import { DEMO_DURATION, DEMO_SEGMENTS, DEMO_SUMMARY } from '@/data/meetingDemo';
+import { useMeetingSession } from '@/hooks/useMeetingSession';
 import { useTheme } from '@/hooks/useTheme';
+import { formatDuration } from '@/lib/datetime';
+import { useLanguageStore } from '@/store/useLanguageStore';
+import { useMeetingStore } from '@/store/useMeetingStore';
 
-// Meeting: record a multilingual conversation → live translated transcript + summary.
-// The record → transcribe → translate → summarize pipeline is Phase 5; this screen
-// renders the demo conversation and a working record/pause toggle.
+// Meeting: a live, two-sided conversation on one phone. Each side holds its
+// button to speak; their words are transcribed, translated, shown, and spoken
+// back to the other person — all on device. Stopping summarizes the whole talk.
 export default function Meeting() {
   const colors = useTheme();
-  const [recording, setRecording] = useState(true);
+  const { talking, begin, finish, talkStart, talkEnd } = useMeetingSession();
+  const { status, durationSec, segments, summary, error, saved, busy, reset, save } =
+    useMeetingStore();
+  const sourceLang = useLanguageStore((s) => s.sourceLang);
+  const targetLang = useLanguageStore((s) => s.targetLang);
+
+  const resting = status === 'idle';
+  // Languages are chosen before a session and locked once it starts.
+  const summaryBullets =
+    status === 'error' ? [error ?? 'Something went wrong. Please try again.'] : summary;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bgPrimary }} edges={['top']}>
       <HomeHeader />
 
-      <View className="flex-1 px-5 pb-4">
-        <RecordingStatus duration={DEMO_DURATION} />
-        {recording && <MeetingWaveform />}
+      <View className="flex-1 gap-3 px-5 pb-4">
+        {resting && <HistoryShortcut label="SAVED SESSIONS" filter="meeting" />}
+        {resting && <LanguageBar middle="swap" />}
 
-        <ScrollView
-          className="mt-2 flex-1"
-          contentContainerStyle={{ gap: 12, paddingVertical: 12 }}
-          showsVerticalScrollIndicator={false}
-        >
-          {DEMO_SEGMENTS.map((segment) => (
-            <TranscriptBubble key={segment.id} {...segment} />
-          ))}
-          {recording && <TypingIndicator />}
-        </ScrollView>
+        {resting ? (
+          <MeetingEmptyState />
+        ) : (
+          <>
+            <RecordingStatus duration={formatDuration(durationSec)} recording={status === 'live'} />
+            <MeetingTranscript segments={segments} />
+          </>
+        )}
 
-        <LiveSummaryPanel
-          summary={DEMO_SUMMARY}
-          recording={recording}
-          onToggle={() => setRecording((v) => !v)}
+        <MeetingControls
+          status={status}
+          talking={talking}
+          busy={busy}
+          youLabel={sourceLang.toUpperCase()}
+          themLabel={targetLang.toUpperCase()}
+          summary={summaryBullets}
+          saved={saved}
+          onBegin={begin}
+          onFinish={finish}
+          onReset={reset}
+          onSave={save}
+          onTalkStart={talkStart}
+          onTalkEnd={talkEnd}
         />
       </View>
     </SafeAreaView>

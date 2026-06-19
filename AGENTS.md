@@ -47,7 +47,7 @@ Use the following stack:
 
 Do not introduce new major libraries unless there is a strong reason. Always ask before installing.
 
-### QVAC capabilities used (6, chained)
+### QVAC capabilities used (7, chained)
 
 | Step | Capability                | What it does                                          | Phase   |
 |------|---------------------------|-------------------------------------------------------|---------|
@@ -56,9 +56,13 @@ Do not introduce new major libraries unless there is a strong reason. Always ask
 | 3    | Text Generation (cleanup) | Polishes the translation into natural phrasing        | Phase 2 |
 | 4    | TTS                       | Speaks the translated text aloud on device            | Phase 2 |
 | 5    | OCR                       | Extracts text from photographed documents/signs       | Phase 3 |
-| 6    | Text Embeddings           | Tags entries for semantic history search              | Phase 4 |
+| 6    | Text Embeddings           | Tags entries for semantic history search + RAG recall | Phase 4 / 6 |
+| 7    | Holepunch P2P (Hyperswarm)| Serverless device-to-device channel — only translated text crosses, never audio | Phase 7 |
 
-All 6 are free (Apache 2.0). Everything runs locally — no API keys, no cloud.
+All 7 are free (Apache 2.0). Everything runs locally — no API keys, no cloud.
+Steps 1–6 are pure on-device inference. Step 7 is on-device networking over the
+Holepunch DHT: peers find each other with no server, and each phone still runs its
+own local translation — the DHT only carries the already-translated text.
 
 -----
 
@@ -685,9 +689,13 @@ When the user asks to build a feature:
 
 ### Build Order (Phases)
 
-We build in **5 phases**. If time runs out at any phase, submit what you have —
+We build in **7 phases**. If time runs out at any phase, submit what you have —
 each phase alone is a valid submission. **Never start the next phase if the
 current one is broken.** A polished Phase 2 (voice translator) beats a broken Phase 4.
+
+Phases 1–5 are the core MVP and are already built. Phases 6–7 are post-MVP
+"wow" features added after the core was working: 6 deepens the History data we
+already store, 7 is the headline on-stage demo.
 
 | Phase | Feature                              | Hours | Cumulative | Key capability                          |
 |-------|--------------------------------------|-------|------------|-----------------------------------------|
@@ -696,6 +704,8 @@ current one is broken.** A polished Phase 2 (voice translator) beats a broken Ph
 | 3     | Document mode (camera → OCR → translate)   | 6 | 16        | expo-camera + OCR + Translation         |
 | 4     | History + smart search               | 4     | 20         | SQLite + Embeddings (RAG)               |
 | 5     | Polish + demo prep                   | 4     | 24         | UI polish, Meeting mode if time, demo   |
+| 6     | Ask Your History (RAG Q&A)           | 3     | 27         | Embeddings retrieval + Text Generation  |
+| 7     | P2P Live Conversation (Holepunch)    | 8     | 35         | Hyperswarm DHT over react-native-bare-kit |
 
 **Phase 1** — Build the 3-step onboarding (Welcome, Languages, Ready), then a
 screen where the user types text, picks two languages, and sees the translation.
@@ -712,6 +722,73 @@ with semantic search ("hospital sign" finds it even if typed "medical building")
 
 **Phase 5** — No new features. Polish UI, loading + error states, attempt Meeting
 mode if time allows, write README, record demo video (WiFi off), prepare pitch.
+
+**Phase 6 — Ask Your History (RAG Q&A).** We already store an embedding per
+history entry (Phase 4). Add a natural-language question box on top of History:
+the user asks "what did that hospital sign say?" and gets a written answer plus
+the source entries it came from. Embed the question, cosine-rank stored entries
+to retrieve the top matches, feed those entries as context to the on-device LLM
+(`completion()` / Qwen3 — the same generator that writes Meeting summaries), and
+stream back a grounded answer. Fully offline; if the LLM or embedding model is
+unavailable, degrade to showing the ranked source entries with no generated
+answer. Never invent facts not present in the retrieved entries. No new native
+dependency — pure JS on top of existing `lib/embeddings.ts`, `lib/db.ts`, and the
+text-generation lib.
+
+**Phase 7 — P2P Live Conversation (Holepunch).** The headline demo: two phones,
+airplane mode / no shared WiFi, a real cross-language conversation. Phone A speaks
+English; Phone B reads + hears it in French and replies in French; Phone A reads +
+hears English. **Each phone translates locally — only the translated text crosses
+the Holepunch DHT, never raw audio.** This is the one feature Google Translate
+cannot do and the only one using QVAC's P2P stack. See **QVAC P2P (Holepunch)
+Rules** below for the architecture. Requires a new native dev build (a second Bare
+worklet alongside QVAC's). Build it last and behind its own tab/entry so a failure
+here never breaks Phases 1–6.
+
+-----
+
+## QVAC P2P (Holepunch) Rules — Phase 7 (CRITICAL)
+
+The Holepunch stack (`hyperswarm`, `corestore`, `bare-rpc`) ships as a dependency
+of `@qvac/sdk` and runs inside a **Bare runtime**, not React Native's Hermes
+engine. `react-native-bare-kit` (already installed, used by QVAC) is what hosts a
+Bare worklet on device. So P2P is built as a **separate Bare worklet** we own,
+bridged to the RN side with RPC.
+
+### Architecture
+
+```
+React Native (Hermes)                 Bare worklet (bare-kit)
+─────────────────────                 ───────────────────────
+useP2PSession hook  ◄── bare-rpc ──►  hyperswarm.join(topic)
+  send(text)            (IPC frames)    on 'connection' → mux stream
+  onMessage(cb)                         send/recv JSON {text, lang, ts}
+lib/p2p.ts (RN side)                  bare/p2p-backend.mjs (worklet entry)
+```
+
+- **Pairing:** derive the swarm topic from a short human code or a QR payload
+  (`hypercore-crypto`-hashed to a 32-byte topic). Same code on both phones → same
+  topic → they discover each other over the DHT. First discovery may need the
+  bootstrap nodes reachable once; the local-network MDNS path works fully offline
+  on the same LAN. For a true airplane-mode demo, document the LAN-direct path.
+- **What crosses the wire:** only a small JSON message `{ id, text, sourceLang,
+  ts }`. Each phone runs its OWN Bergamot translation on the received text into
+  its own target language, then its own TTS. Raw audio NEVER leaves a device.
+- **Bundling:** the worklet entry is bundled with `bare-pack` into an asset the
+  app ships; `react-native-bare-kit`'s `Worklet` runs it. Add an npm script for
+  the bundling step; document it in the build notes.
+- **Files:** `lib/p2p.ts` (RN-side RPC client + typed send/receive), `bare/
+  p2p-backend.mjs` (worklet: swarm + stream framing), `hooks/useP2PSession.ts`
+  (connect/disconnect/peer state), `store/useP2PStore.ts` (connection status,
+  transcript of both sides), plus a screen + components for the live chat UI.
+- **Native build:** adding our own worklet may require a new dev build. Treat it
+  like any native change — rebuild the dev client, reinstall, test on two physical
+  arm64 devices. Verify `npm ls expo-font` still resolves only `14.0.12` after.
+- **Privacy:** the DHT carries translated text between two consenting paired
+  devices and nothing else. No relay server stores it. Still honor the privacy
+  promise: no logging of message content, no third party.
+- **Graceful failure:** if pairing or the worklet fails, the feature shows a clear
+  error and the rest of the app is unaffected. Never let P2P crash the main app.
 
 -----
 
@@ -760,6 +837,82 @@ export const loadTranslationModel = async (sourceLang: string, targetLang: strin
 - Use `stream: true` where supported for better UX on slower devices.
 - Show a friendly error if a model fails to load.
 - Every QVAC capability is free (Apache 2.0). No API keys, ever.
+
+-----
+
+## Native Builds & Dependency Safety (CRITICAL)
+
+This app uses native modules (`@qvac/sdk`, `react-native-bare-kit`, `expo-sqlite`,
+`expo-audio`, etc.). Because of that:
+
+### You cannot run this app in Expo Go
+
+Expo Go does not contain our native modules, so it crashes. The app runs **only**
+as a **development build** (`expo-dev-client`). Two ways to produce one:
+
+```bash
+# Local build (free, fastest iteration) — needs the Android SDK + JDK installed,
+# a USB-connected device with USB debugging on, and ANDROID_HOME set.
+npx expo run:android
+
+# Cloud build (no local Android SDK needed) — uses the limited free EAS quota.
+eas build --profile development --platform android
+```
+
+After the dev build is installed on the device **once**, daily work is just:
+
+```bash
+npx expo start --dev-client   # JS/TSX edits hot-reload instantly, no rebuild
+```
+
+You only need a **new native build** when you add/upgrade/remove a **native**
+dependency or change `app.json` plugins. Pure JS/TSX/styling/logic changes never
+need a rebuild — they hot-reload.
+
+### Device / build requirements
+
+- QVAC runtime requires a **physical arm64 device** (no emulator).
+- `app.json` sets `minSdkVersion 29` (Android 10+). Android is forced to
+  `arm64-v8a` by the QVAC config plugin.
+- A development build needs the `expo-dev-client` package installed.
+
+### Dependency rule: keep everything on Expo SDK 54 versions
+
+**Always install Expo / React-Native packages with `npx expo install <pkg>`, never
+plain `npm install <pkg>`.** `expo install` picks the version that matches the
+installed SDK (54). A raw `npm install` can pull a too-new major that crashes the
+native build.
+
+### Known pitfall — `expo-font` version mismatch (do not remove the override)
+
+`@expo/vector-icons` declares `expo-font` as a peer dependency with a loose range
+(`>=14.0.4`). Modern npm auto-installs the newest match, which can be an SDK 56
+build of `expo-font`. That version's native `FontLoaderModule` calls
+`getDirectConverter`, a method **absent** from SDK 54's `expo-modules-core`, so the
+app crashes instantly on launch with:
+
+```
+java.lang.NoSuchMethodError: ... getDirectConverter ... (ReturnTypeKt)
+  at expo.modules.font.FontLoaderModule.definition(FontLoaderModule.kt:98)
+```
+
+This is pinned in `package.json`:
+
+```json
+"overrides": {
+  "expo-font": "14.0.12"
+}
+```
+
+**Never delete this override** and never let `expo-font` drift off the SDK 54
+version while the project stays on Expo SDK 54. After any dependency change, verify
+with `npm ls expo-font` that only `14.0.12` resolves, then rebuild the dev client.
+
+### After changing native deps, always
+
+1. `npm ls expo-font` → confirm a single SDK 54 version.
+2. `npx expo install --check` → confirm Expo packages are aligned.
+3. Rebuild the dev client (local `run:android` or EAS), reinstall, then test on device.
 
 -----
 

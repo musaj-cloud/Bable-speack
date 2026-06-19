@@ -6,6 +6,7 @@ import { SettingsAppearanceSection } from '@/components/SettingsAppearanceSectio
 import { SettingsAudioSection } from '@/components/SettingsAudioSection';
 import { SettingsDataSection } from '@/components/SettingsDataSection';
 import { SettingsLanguageSection } from '@/components/SettingsLanguageSection';
+import { SettingsLiveSection } from '@/components/SettingsLiveSection';
 import { typography } from '@/constants/typography';
 import { useTheme } from '@/hooks/useTheme';
 
@@ -34,6 +35,7 @@ export default function Settings() {
         <View className="gap-5">
           <SettingsLanguageSection />
           <SettingsAudioSection />
+          <SettingsLiveSection />
           <SettingsAppearanceSection />
           <SettingsDataSection />
           <SettingsAboutCard />
