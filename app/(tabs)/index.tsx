@@ -1,9 +1,10 @@
 import { router } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { Alert, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ActionBar } from '@/components/ActionBar';
 import { ConverseEmptyState } from '@/components/ConverseEmptyState';
+import { ConverseNotice } from '@/components/ConverseNotice';
 import { ConverseProcessing } from '@/components/ConverseProcessing';
 import { ConverseStatus } from '@/components/ConverseStatus';
 import { HomeHeader } from '@/components/HomeHeader';
@@ -11,9 +12,9 @@ import { LanguageBar } from '@/components/LanguageBar';
 import { TranslationCard } from '@/components/TranslationCard';
 import { TypeToTranslateSheet } from '@/components/TypeToTranslateSheet';
 import { getLanguageName } from '@/data/languages';
+import { useConverseMic } from '@/hooks/useConverseMic';
 import { useRetranslateOnLangChange } from '@/hooks/useRetranslateOnLangChange';
 import { useSpeakState } from '@/hooks/useSpeakState';
-import { useVoiceCapture } from '@/hooks/useVoiceCapture';
 import { useTheme } from '@/hooks/useTheme';
 import { isTtsSupported } from '@/lib/tts';
 import { ConverseStatus as Status, useConverseStore } from '@/store/useConverseStore';
@@ -34,11 +35,12 @@ export default function Converse() {
   const colors = useTheme();
   const sourceLang = useLanguageStore((s) => s.sourceLang);
   const targetLang = useLanguageStore((s) => s.targetLang);
-  const { sourceText, translatedText, status, error, setSourceText, reset, beginRecording,
-    setLiveText, finalizeVoice, runTranslation, speak } = useConverseStore();
-  const capture = useVoiceCapture();
+  const { sourceText, translatedText, status, error, setSourceText, runTranslation, speak, reset } =
+    useConverseStore();
   const [typing, setTyping] = useState(false);
-  const listening = useRef(false);
+
+  // Tap-to-record: first tap records, second tap stops → transcribe → translate.
+  const { onMicTap } = useConverseMic(sourceLang, targetLang);
 
   // Re-translate the current text when the user changes either language.
   useRetranslateOnLangChange(sourceLang, targetLang);
@@ -50,30 +52,8 @@ export default function Converse() {
     runTranslation(sourceLang, targetLang);
   };
 
-  // Tap to start capture; tap again to stop early. With live streaming the
-  // transcript appears word by word and the model auto-finalizes on end-of-turn;
-  // otherwise it records and transcribes once on stop. Both end via onFinal.
-  const onMicTap = async () => {
-    if (listening.current) {
-      listening.current = false;
-      await capture.stop();
-      return;
-    }
-    beginRecording();
-    listening.current = await capture.start(sourceLang, {
-      onPartial: setLiveText,
-      onFinal: (text) => {
-        listening.current = false;
-        finalizeVoice(text, sourceLang, targetLang);
-      },
-      onError: () => {
-        listening.current = false;
-        reset();
-      },
-    });
-    if (!listening.current) reset(); // mic unavailable or permission denied
-  };
-
+  const recording = status === 'recording';
+  const transcribing = status === 'transcribing';
   const targetText = status === 'error' ? (error ?? 'Something went wrong') : translatedText;
   const showTarget = status === 'translating' || status === 'ready' || status === 'error';
   const ttsOk = isTtsSupported(targetLang);
@@ -103,8 +83,20 @@ export default function Converse() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {status === 'recording' && !sourceText ? (
-            <ConverseProcessing icon="mic" label="Listening…" listening />
+          {status === 'error' && !sourceText ? (
+            <ConverseNotice
+              message={error ?? 'Something went wrong. Tap the mic to try again.'}
+              onRetry={() => {
+                reset();
+                onMicTap();
+              }}
+            />
+          ) : (recording || transcribing) && !sourceText ? (
+            <ConverseProcessing
+              icon="mic"
+              label={transcribing ? 'Transcribing…' : 'Listening…'}
+              listening={recording}
+            />
           ) : sourceText ? (
             <>
               <TranslationCard
@@ -134,8 +126,8 @@ export default function Converse() {
           left={{ icon: 'keyboard', label: 'Type instead', onPress: () => setTyping(true) }}
           center={{
             icon: 'mic',
-            label: status === 'recording' ? 'Tap to stop' : 'Tap to speak',
-            active: status === 'recording',
+            label: recording ? 'Tap to stop' : 'Tap to record',
+            active: recording,
             onPress: onMicTap,
           }}
           right={{ icon: 'photo-camera', label: 'Use camera', onPress: () => router.push('/document') }}

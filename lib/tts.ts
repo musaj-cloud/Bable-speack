@@ -9,6 +9,7 @@ import {
 } from 'expo-audio';
 import { File, Paths } from 'expo-file-system';
 import { loadModel, textToSpeech, unloadModel, TTS_MULTILINGUAL_SUPERTONIC2_Q8_0 } from '@qvac/sdk';
+import type { ModelProgressFn } from '@/lib/qvac';
 import { splitSentences } from '@/lib/sentences';
 import { pcm16ToWav } from '@/lib/wav';
 
@@ -18,6 +19,10 @@ const TTS_LANGS = new Set(['en', 'ko', 'es', 'pt', 'fr']);
 const SAMPLE_RATE = 44100;
 
 export const isTtsSupported = (lang: string): boolean => TTS_LANGS.has(lang);
+
+// Every language Supertonic can speak. Exposed so the after-onboarding warmup
+// can pre-download all of them in one go (see warmAllVoices).
+export const TTS_LANGUAGES: string[] = [...TTS_LANGS];
 
 // Supertonic can return an empty buffer (silent failure) for very long input —
 // fine for a short Converse phrase, but Document mode feeds it a whole OCR'd
@@ -62,12 +67,13 @@ type TtsConfig = {
 const loadTtsRaw = loadModel as unknown as (options: {
   modelSrc: typeof TTS_MULTILINGUAL_SUPERTONIC2_Q8_0;
   modelConfig: TtsConfig;
+  onProgress?: ModelProgressFn;
 }) => Promise<string>;
 
 // One loaded voice per language+speed (speed is baked in at load time).
 const cache = new Map<string, Promise<string>>();
 
-const getTtsModel = (lang: string, speed: number): Promise<string> => {
+const getTtsModel = (lang: string, speed: number, onProgress?: ModelProgressFn): Promise<string> => {
   const k = `${lang}:${speed}`;
   let model = cache.get(k);
   if (!model) {
@@ -80,6 +86,7 @@ const getTtsModel = (lang: string, speed: number): Promise<string> => {
         ttsSpeed: speed,
         ttsNumInferenceSteps: 5,
       },
+      onProgress,
     }).catch((err) => {
       cache.delete(k);
       throw err;
@@ -87,6 +94,30 @@ const getTtsModel = (lang: string, speed: number): Promise<string> => {
     cache.set(k, model);
   }
   return model;
+};
+
+// Preload the voice for a language+speed so the first read-aloud is instant and
+// never races a download. Cached, so it's safe to call repeatedly. Used by the
+// after-onboarding warmup (lib/warmup.ts).
+export const warmTts = (lang: string, speed = 1, onProgress?: ModelProgressFn): Promise<string> =>
+  getTtsModel(lang, speed, onProgress);
+
+// Pre-download the voice for EVERY supported language at the given speed, so the
+// user never needs internet again to read a translation aloud — whatever pair
+// they later switch to. Supertonic is a single multilingual model file, so only
+// the first language actually downloads (we report its progress); the rest just
+// initialize from the cached file and are fast. Best-effort per language.
+export const warmAllVoices = async (speed = 1, onProgress?: ModelProgressFn): Promise<void> => {
+  for (let i = 0; i < TTS_LANGUAGES.length; i++) {
+    try {
+      // Only the first load downloads the shared model file — surface its
+      // progress; later languages load instantly from disk.
+      await getTtsModel(TTS_LANGUAGES[i], speed, i === 0 ? onProgress : undefined);
+    } catch {
+      // One unsupported/failed voice must not abort the rest — it loads lazily
+      // on first use instead.
+    }
+  }
 };
 
 // Playback lifecycle the UI animates against:

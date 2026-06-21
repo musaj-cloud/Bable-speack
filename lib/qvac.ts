@@ -10,6 +10,7 @@
 import {
   loadModel,
   unloadModel,
+  type ModelProgressUpdate,
   BERGAMOT_EN_AR, BERGAMOT_AR_EN,
   BERGAMOT_EN_AZ, BERGAMOT_AZ_EN,
   BERGAMOT_EN_BG, BERGAMOT_BG_EN,
@@ -194,9 +195,14 @@ type BergamotConfig = BergamotGen & {
 // language pair is resolved dynamically (a looked-up ModelSrc union), which the
 // overloads can't narrow. We call through a precisely typed alias instead — the
 // runtime shape matches the official QVAC Bergamot example exactly.
+// Download/load progress callback (percentage 0–100 + bytes). Threaded through
+// so the after-onboarding warmup can show a progress bar (see lib/warmup.ts).
+export type ModelProgressFn = (progress: ModelProgressUpdate) => void;
+
 const loadTranslationModelRaw = loadModel as unknown as (options: {
   modelSrc: ModelSrc;
   modelConfig: BergamotConfig;
+  onProgress?: ModelProgressFn;
 }) => Promise<string>;
 
 // True when we can translate the pair directly or via an English pivot.
@@ -215,12 +221,13 @@ const GEN = {
   lengthpenalty: 1.2,
 } as const;
 
-const loadPair = (from: string, to: string): Promise<string> => {
+const loadPair = (from: string, to: string, onProgress?: ModelProgressFn): Promise<string> => {
   // Direct English → X
   if (from === 'en') {
     return loadTranslationModelRaw({
       modelSrc: fromEn(to),
       modelConfig: { engine: 'Bergamot', from, to, ...GEN },
+      onProgress,
     });
   }
   // Direct X → English
@@ -228,6 +235,7 @@ const loadPair = (from: string, to: string): Promise<string> => {
     return loadTranslationModelRaw({
       modelSrc: toEn(from),
       modelConfig: { engine: 'Bergamot', from, to, ...GEN },
+      onProgress,
     });
   }
   // Pivot X → English → Y (SDK chains the two models internally)
@@ -240,6 +248,7 @@ const loadPair = (from: string, to: string): Promise<string> => {
       ...GEN,
       pivotModel: { modelSrc: fromEn(to), ...GEN },
     },
+    onProgress,
   });
 };
 
@@ -248,17 +257,55 @@ const cache = new Map<string, Promise<string>>();
 const key = (from: string, to: string) => `${from}-${to}`;
 
 // Returns a loaded modelId for the pair, loading + caching on first use.
-export const getTranslationModel = (from: string, to: string): Promise<string> => {
+// onProgress (used by the warmup) only fires on the first, uncached load.
+export const getTranslationModel = (
+  from: string,
+  to: string,
+  onProgress?: ModelProgressFn
+): Promise<string> => {
   const k = key(from, to);
   let model = cache.get(k);
   if (!model) {
-    model = loadPair(from, to).catch((err) => {
+    model = loadPair(from, to, onProgress).catch((err) => {
       cache.delete(k); // drop the failed promise so the next call can retry
       throw err;
     });
     cache.set(k, model);
   }
   return model;
+};
+
+// Pre-download a pair's model file(s) to disk WITHOUT keeping it resident.
+// Used by the after-onboarding warmup to make a shortlist of languages available
+// offline: we load it (which downloads the file) then immediately unload it, so
+// RAM stays free. A later getTranslationModel reloads it from disk — offline and
+// fast, no network. Deliberately bypasses the runtime cache so it can't leave a
+// stale (unloaded) modelId behind for the live translation path. Best-effort.
+// Resolves true when the pair's file is on disk afterwards (or already loaded).
+export const prefetchTranslationModel = async (
+  from: string,
+  to: string,
+  onProgress?: ModelProgressFn
+): Promise<boolean> => {
+  if (from === to) return true;
+  if (!isPairSupported(from, to)) return false;
+  // Already loaded/loading for live use — its file is on disk, nothing to fetch.
+  if (cache.has(key(from, to))) return true;
+  let modelId: string | null = null;
+  try {
+    modelId = await loadPair(from, to, onProgress);
+  } catch {
+    // Download failed — it retries lazily on first real use.
+  }
+  if (modelId) {
+    try {
+      await unloadModel({ modelId });
+    } catch {
+      // Nothing to free.
+    }
+    return true;
+  }
+  return false;
 };
 
 // Free device memory — call when the app goes to the background.

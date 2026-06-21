@@ -28,8 +28,10 @@ type ConverseState = {
   reset: () => void;
   swapText: () => void;
   beginRecording: () => void;
+  markTranscribing: () => void;
   setLiveText: (text: string) => void;
   finalizeVoice: (text: string, from: string, to: string) => Promise<void>;
+  failVoice: (e: unknown) => void;
   runTranslation: (from: string, to: string, opts?: { autoSave?: boolean }) => Promise<void>;
   runVoice: (uri: string, from: string, to: string) => Promise<void>;
   save: (from: string, to: string) => Promise<void>;
@@ -79,6 +81,12 @@ export const useConverseStore = create<ConverseState>((set, get) => ({
     set({ status: 'recording', error: null, sourceText: '', translatedText: '', saved: false });
   },
 
+  // Batch path: the user tapped to stop. We're now transcribing the recorded
+  // file (no live partial yet), so reflect that in the status line + indicator.
+  // Skipped if an end-of-turn already moved us past recording.
+  markTranscribing: () =>
+    set((s) => (s.status === 'recording' ? { status: 'transcribing' } : {})),
+
   // Live streaming path: update the source card with the growing transcript as
   // the user speaks. Only meaningful while status is 'recording'.
   setLiveText: (text) => set({ sourceText: text }),
@@ -88,8 +96,14 @@ export const useConverseStore = create<ConverseState>((set, get) => ({
   // but the text is already transcribed live. Empty input returns to idle.
   finalizeVoice: async (text, from, to) => {
     const trimmed = text.trim();
+    // No speech recognized: show a clear hint instead of silently blanking the
+    // screen (which reads as "nothing happened"). Common when the mic captured
+    // silence, or when the recorded audio couldn't be decoded.
     if (!trimmed) {
-      set({ status: 'idle' });
+      set({
+        status: 'error',
+        error: "I didn't catch any speech. Tap the mic and speak clearly, a little closer to the phone.",
+      });
       return;
     }
     set({ sourceText: trimmed, error: null });
@@ -100,6 +114,10 @@ export const useConverseStore = create<ConverseState>((set, get) => ({
       set({ status: 'error', error: toMessage(e) });
     }
   },
+
+  // Voice capture failed (mic error, model load, decode). Surface it so the
+  // user sees why nothing happened rather than landing back on a blank screen.
+  failVoice: (e) => set({ status: 'error', error: toMessage(e) }),
 
   // Typed input path (Phase 1). Auto-saves the finished result to history; the
   // retranslate-on-language-change hook passes autoSave: false so flipping

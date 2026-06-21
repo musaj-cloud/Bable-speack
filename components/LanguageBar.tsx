@@ -70,6 +70,7 @@ export const LanguageBar = ({ middle = 'swap' }: Props) => {
         title="I speak"
         selectedCode={sourceLang}
         disabledCode={targetLang}
+        side="source"
         onSelect={setSourceLang}
         onClose={() => setPicker(null)}
       />
@@ -78,6 +79,7 @@ export const LanguageBar = ({ middle = 'swap' }: Props) => {
         title="Translate to"
         selectedCode={targetLang}
         disabledCode={sourceLang}
+        side="target"
         onSelect={setTargetLang}
         onClose={() => setPicker(null)}
       />

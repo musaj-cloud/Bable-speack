@@ -96,8 +96,23 @@ the build or the rest of the app.
 
 ## Pairing & offline note
 
-The swarm topic is derived from a short pairing code typed on both phones
-(`hypercore-crypto`-hashed to a 32-byte topic). First discovery may need the
-DHT bootstrap nodes reachable once; on the same LAN the local mDNS path works
-fully offline. For a true airplane-mode stage demo, keep both phones on the same
-local network.
+Two ways to pair (both hash the same code to a 32-byte `hypercore-crypto` topic):
+
+1. **Scan a QR — fully offline (recommended for the stage demo).** The host phone
+   (`CMD_HOST`) runs a **local HyperDHT bootstrap node** on its LAN address
+   (found via `bare-os` `networkInterfaces()`, port `49737`) and shows a QR
+   encoding `BSPK1|<code>|<host>|<port>` (see `lib/pairing.ts`). The joiner scans
+   it (`expo-camera`) and connects with `new Hyperswarm({ bootstrap: [host:port] })`
+   — discovery happens entirely on the LAN, **no internet, no SIM**. Works on a
+   phone hotspot with no data (Xender-style: one phone *is* the network).
+2. **Type a code — public DHT fallback.** No host/port, so it uses the default
+   internet bootstrap nodes (reachable once); fine when there's connectivity.
+
+For the airplane-mode demo: one phone enables its hotspot (no SIM/internet
+needed), the other joins that Wi-Fi, then scan the QR. After they connect the
+link is direct peer-to-peer and stays up offline.
+
+> Native deps added for this: `bare-os` + `hyperdht` are already in the tree
+> (Hyperswarm pulls them in), so this is still just a `npm run build:p2p` re-pack
+> — no new React-Native native module. QR generation uses the pure-JS encoder in
+> `qrcode-terminal` (pinned in package.json); QR scanning reuses `expo-camera`.

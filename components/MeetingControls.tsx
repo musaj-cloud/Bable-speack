@@ -1,28 +1,29 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import { LiveSummaryPanel } from '@/components/LiveSummaryPanel';
-import { MeetingTalkButtons } from '@/components/MeetingTalkButtons';
+import { MeetingRecordButton } from '@/components/MeetingRecordButton';
 import { typography } from '@/constants/typography';
 import { useTheme } from '@/hooks/useTheme';
-import type { MeetingStatus, TurnSide } from '@/store/useMeetingStore';
+import type { MeetingStatus } from '@/store/useMeetingStore';
 
 type Props = {
   status: MeetingStatus;
-  talking: TurnSide | null;
-  busy: boolean;
-  youLabel: string;
-  themLabel: string;
+  recording: boolean;
   summary: string[];
   saved: boolean;
-  onBegin: () => void;
-  onFinish: () => void;
+  onToggleRecord: () => void;
   onReset: () => void;
   onSave: () => void;
-  onTalkStart: (side: TurnSide) => void;
-  onTalkEnd: () => void;
 };
 
-// A pill action button (Start / End / New session).
+// Per-phase status label shown while the recording is being processed on device.
+const PROCESSING_LABEL: Partial<Record<MeetingStatus, string>> = {
+  transcribing: 'Transcribing on device…',
+  translating: 'Translating on device…',
+  summarizing: 'Summarizing on device…',
+};
+
+// A pill action button (New session).
 const Pill = ({
   label, icon, tint, onPress,
 }: {
@@ -46,39 +47,28 @@ const Pill = ({
 
 // The phase-dependent bottom control area for Meeting mode.
 export const MeetingControls = ({
-  status, talking, busy, youLabel, themLabel, summary, saved,
-  onBegin, onFinish, onReset, onSave, onTalkStart, onTalkEnd,
+  status, recording, summary, saved, onToggleRecord, onReset, onSave,
 }: Props) => {
   const colors = useTheme();
 
-  if (status === 'idle') {
-    return <Pill label="Start session" icon="play-arrow" tint={colors.accentBlue} onPress={onBegin} />;
-  }
-
-  if (status === 'live') {
+  if (status === 'idle' || status === 'recording') {
     return (
-      <View className="gap-4">
-        <MeetingTalkButtons
-          youLabel={youLabel}
-          themLabel={themLabel}
-          talking={talking}
-          busy={busy}
-          onTalkStart={onTalkStart}
-          onTalkEnd={onTalkEnd}
-        />
-        <Pill label="End session" icon="stop" tint={colors.warningRed} onPress={onFinish} />
+      <View className="items-center">
+        <MeetingRecordButton recording={recording} onPress={onToggleRecord} />
       </View>
     );
   }
 
-  if (status === 'summarizing') {
+  if (status === 'transcribing' || status === 'translating' || status === 'summarizing') {
     return (
       <View
         style={{ backgroundColor: colors.bgCard, borderColor: colors.border, borderWidth: 1, borderRadius: 20 }}
         className="flex-row items-center justify-center gap-3 p-5"
       >
         <ActivityIndicator size="small" color={colors.accentBlue} />
-        <Text style={{ ...typography.bodyMd, color: colors.textSecondary }}>Summarizing on device…</Text>
+        <Text style={{ ...typography.bodyMd, color: colors.textSecondary }}>
+          {PROCESSING_LABEL[status]}
+        </Text>
       </View>
     );
   }

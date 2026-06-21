@@ -1,4 +1,3 @@
-import { MaterialIcons } from '@expo/vector-icons';
 import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { typography } from '@/constants/typography';
 import { useTheme } from '@/hooks/useTheme';
@@ -9,32 +8,18 @@ type Props = {
   onConnect: () => void;
 };
 
-// Idle pairing card: both phones type the SAME short code to meet on the DHT.
-// The code seeds the swarm topic — no account, no server, no QR needed.
+// Compact "enter a code instead" fallback for pairing, shown under the scan/host
+// actions on the Live start screen. Typing a code (no scan) connects via the
+// public DHT, so it needs the internet reachable once — scanning a QR is the
+// fully-offline path. Both phones must use the same code.
 export const LivePairCard = ({ code, onChangeCode, onConnect }: Props) => {
   const colors = useTheme();
   const ready = code.trim().length >= 3;
 
   return (
-    <View className="gap-5">
-      <View className="items-center gap-3 px-4">
-        <View
-          style={{ width: 64, height: 64, borderRadius: 99, backgroundColor: colors.iconChipLavender }}
-          className="items-center justify-center"
-        >
-          <MaterialIcons name="wifi-tethering" size={30} color={colors.iconChipLavenderText} />
-        </View>
-        <Text style={{ ...typography.h3, color: colors.textPrimary }} className="text-center">
-          Talk across phones
-        </Text>
-        <Text style={{ ...typography.bodyMd, color: colors.textSecondary }} className="text-center">
-          Both phones enter the same code to connect directly — peer to peer, no
-          internet needed. Each phone reads and hears in its own language.
-        </Text>
-      </View>
-
-      <View className="gap-2">
-        <Text style={{ ...typography.label, color: colors.textMuted }}>SHARED CODE</Text>
+    <View className="gap-2 mt-1">
+      <Text style={{ ...typography.label, color: colors.textMuted }}>OR ENTER A CODE</Text>
+      <View className="flex-row items-center gap-2">
         <TextInput
           value={code}
           onChangeText={onChangeCode}
@@ -44,28 +29,32 @@ export const LivePairCard = ({ code, onChangeCode, onConnect }: Props) => {
           autoCorrect={false}
           style={{
             ...typography.bodyLg,
+            flex: 1,
             color: colors.textPrimary,
             backgroundColor: colors.bgCard,
             borderColor: colors.border,
             borderWidth: 1,
             borderRadius: 14,
             paddingHorizontal: 16,
-            height: 56,
+            height: 52,
           }}
         />
+        <TouchableOpacity
+          onPress={onConnect}
+          disabled={!ready}
+          activeOpacity={0.85}
+          style={{
+            backgroundColor: ready ? colors.accentBlue : colors.bgCardInner,
+            borderRadius: 14,
+            opacity: ready ? 1 : 0.7,
+            height: 52,
+            paddingHorizontal: 20,
+          }}
+          className="items-center justify-center"
+        >
+          <Text style={{ ...typography.label, color: ready ? '#ffffff' : colors.textMuted }}>JOIN</Text>
+        </TouchableOpacity>
       </View>
-
-      <TouchableOpacity
-        onPress={onConnect}
-        disabled={!ready}
-        activeOpacity={0.85}
-        style={{ backgroundColor: ready ? colors.accentBlue : colors.bgCardInner, borderRadius: 14, opacity: ready ? 1 : 0.7 }}
-        className="h-14 items-center justify-center"
-      >
-        <Text style={{ ...typography.label, color: ready ? '#ffffff' : colors.textMuted }}>
-          CONNECT
-        </Text>
-      </TouchableOpacity>
     </View>
   );
 };

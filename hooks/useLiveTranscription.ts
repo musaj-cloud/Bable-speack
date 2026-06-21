@@ -51,12 +51,16 @@ export const useLiveTranscription = () => {
   const frameSub = useRef<{ remove: () => void } | null>(null);
   const errSub = useRef<{ remove: () => void } | null>(null);
   const active = useRef(false);
+  const ended = useRef(false); // user signalled end-of-audio (session.end called)
   const lastPartial = useRef('');
   const finalized = useRef(false);
   const handlers = useRef<LiveHandlers | null>(null);
 
-  // Tear down the mic stream and the transcription session. Idempotent.
-  const cleanup = useCallback(async () => {
+  // Tear down the mic stream and the transcription session. Idempotent. Called
+  // only from finalize — i.e. AFTER the read loop has exited — so we never
+  // destroy the session out from under an in-flight native read (that race
+  // crashed the QVAC worklet with a SIGSEGV on stop).
+  const teardown = useCallback(async () => {
     active.current = false;
     frameSub.current?.remove();
     frameSub.current = null;
@@ -69,7 +73,10 @@ export const useLiveTranscription = () => {
       // mic already stopped
     }
     try {
-      session.current?.end();
+      // The user-stop path already called end() before the loop drained, so the
+      // stream is closing itself — calling it again would double-close. Only the
+      // auto end-of-turn / error paths (which never called end()) close here.
+      if (!ended.current) session.current?.end();
     } catch {
       // session already ended
     }
@@ -77,14 +84,16 @@ export const useLiveTranscription = () => {
   }, []);
 
   // Fire onFinal exactly once (from end-of-turn or an early stop), then clean up.
+  // Runs only after the read loop has finished, so the downstream translation it
+  // triggers never overlaps a live transcription session on the shared worklet.
   const finalize = useCallback(
     async (text: string) => {
       if (finalized.current) return;
       finalized.current = true;
-      await cleanup();
+      await teardown();
       handlers.current?.onFinal(text);
     },
-    [cleanup]
+    [teardown]
   );
 
   // Begin live transcription in `lang`. Returns false if mic unavailable or
@@ -100,13 +109,15 @@ export const useLiveTranscription = () => {
       handlers.current = h;
       lastPartial.current = '';
       finalized.current = false;
+      ended.current = false;
       const s = await createTranscribeSession(lang);
       session.current = s;
       active.current = true;
 
-      // Pipe each live mic frame's PCM straight into the session.
+      // Pipe each live mic frame's PCM straight into the session. Stop feeding
+      // once end() has been signalled so writes never race the model's flush.
       frameSub.current = mic.addFrameListener((frame) => {
-        if (!active.current) return;
+        if (!active.current || ended.current) return;
         try {
           s.write(base64ToBytes(frame.pcmBase64));
         } catch {
@@ -114,16 +125,28 @@ export const useLiveTranscription = () => {
         }
       });
       errSub.current = mic.addErrorListener(({ message }) => {
-        if (active.current && !finalized.current) {
+        // Ignore errors once we're intentionally stopping or already done:
+        // stopping the native mic makes its in-flight read return 0 bytes, which
+        // surfaces here as "AudioRecord read returned 0 bytes" — that's the
+        // normal end of capture, not a failure. The drain path finalizes.
+        if (finalized.current || ended.current) return;
+        // Mic genuinely died mid-capture. If we already have a transcript,
+        // salvage it (translate what the user said) rather than throwing it
+        // away; only surface an error when there's nothing to keep.
+        if (lastPartial.current.trim()) {
+          void finalize(lastPartial.current);
+        } else {
           finalized.current = true;
-          void cleanup().finally(() => h.onError?.(new Error(message)));
+          void teardown().finally(() => h.onError?.(new Error(message)));
         }
       });
 
       await mic.start({ sampleRate: 16000, frameDurationMs: 20 });
 
       // Consume transcription events: grow the partial transcript from segments
-      // (or plain text), and finalize on the model's end-of-turn signal.
+      // (or plain text). The loop ends on the model's end-of-turn signal, or when
+      // the iterator completes after end() flushes the final result — finalize
+      // once, from here, after the loop has fully exited (no teardown mid-read).
       void (async () => {
         const segments = new Map<number, string>();
         let plain = '';
@@ -131,7 +154,6 @@ export const useLiveTranscription = () => {
           (segments.size ? [...segments.values()].join(' ') : plain).replace(/\s+/g, ' ').trim();
         try {
           for await (const ev of s) {
-            if (!active.current) break;
             if (ev.type === 'segment') {
               segments.set(ev.segment.id, ev.segment.text);
               lastPartial.current = assemble();
@@ -141,14 +163,14 @@ export const useLiveTranscription = () => {
               lastPartial.current = assemble();
               h.onPartial(lastPartial.current);
             } else if (ev.type === 'endOfTurn') {
-              await finalize(assemble());
-              return;
+              break;
             }
           }
+          await finalize(assemble());
         } catch (e) {
-          if (active.current && !finalized.current) {
+          if (!finalized.current) {
             finalized.current = true;
-            await cleanup();
+            await teardown();
             h.onError?.(e);
           }
         }
@@ -156,12 +178,30 @@ export const useLiveTranscription = () => {
 
       return true;
     },
-    [cleanup, finalize]
+    [teardown, finalize]
   );
 
-  // Stop early (user tapped the mic again): finalize with the last partial.
+  // Stop early (user tapped the mic again). Signal end-of-audio and let the read
+  // loop drain the model's final flush, then finalize itself — rather than
+  // tearing the session down here while that loop is still mid-read. A safety
+  // timer forces finalize with the last partial if the flush never completes.
   const stop = useCallback(async () => {
-    await finalize(lastPartial.current);
+    if (finalized.current || ended.current) return;
+    ended.current = true;
+    const mic = getLiveMic();
+    try {
+      await mic?.stop(); // stop producing PCM before the model flushes
+    } catch {
+      // mic already stopped
+    }
+    try {
+      session.current?.end(); // flush: the loop receives the final result, then exits
+    } catch {
+      // session already ended — the loop will finalize on its own
+    }
+    setTimeout(() => {
+      if (!finalized.current) void finalize(lastPartial.current);
+    }, 4000);
   }, [finalize]);
 
   return { available, start, stop };

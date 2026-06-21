@@ -39,10 +39,12 @@ export const useVoiceCapture = () => {
         mode.current = 'live';
         return live.start(l, h);
       }
-      // Batch: auto-stop on silence, then transcribe + finalize.
+      // Batch: pure tap-to-record. The user ends it by tapping the mic again
+      // (vad off); onAutoStop only fires at the safety cap so it can't run
+      // forever. Then transcribe + finalize.
       mode.current = 'batch';
       finishing.current = false;
-      return recorder.start({ onAutoStop: () => void finishBatch() });
+      return recorder.start({ vad: false, onAutoStop: () => void finishBatch() });
     },
     [live, recorder, finishBatch]
   );

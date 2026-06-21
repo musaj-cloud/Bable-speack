@@ -10,8 +10,9 @@ type Props = {
   onLeave: () => void;
 };
 
-// Bottom controls for an active session: leave on the left, a big tap-to-talk
-// mic in the centre. Speaking is disabled until a peer is connected.
+// Bottom controls for an active session: disconnect on the left, a big tap-to-talk
+// mic in the centre. Disconnect is always available (cancel while waiting, hang up
+// while connected). Speaking is disabled until a peer is connected.
 export const LiveTalkBar = ({ talking, connected, onToggle, onLeave }: Props) => {
   const colors = useTheme();
   const micBg = talking ? colors.warningRed : connected ? colors.accentBlue : colors.bgCardInner;
@@ -30,7 +31,9 @@ export const LiveTalkBar = ({ talking, connected, onToggle, onLeave }: Props) =>
         >
           <MaterialIcons name="call-end" size={24} color={colors.warningRed} />
         </View>
-        <Text style={{ ...typography.caption, color: colors.textSecondary }}>LEAVE</Text>
+        <Text style={{ ...typography.caption, color: colors.textSecondary }}>
+          {connected ? 'DISCONNECT' : 'CANCEL'}
+        </Text>
       </TouchableOpacity>
 
       <TouchableOpacity

@@ -32,6 +32,7 @@ export const SettingsLanguageSection = () => {
         title="Default source language"
         selectedCode={sourceLang}
         disabledCode={targetLang}
+        side="source"
         onSelect={setSourceLang}
         onClose={() => setOpen(null)}
       />
@@ -40,6 +41,7 @@ export const SettingsLanguageSection = () => {
         title="Default target language"
         selectedCode={targetLang}
         disabledCode={sourceLang}
+        side="target"
         onSelect={setTargetLang}
         onClose={() => setOpen(null)}
       />

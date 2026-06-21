@@ -7,11 +7,12 @@ type Props = {
   status: P2PState;
   peers: number;
   error: string | null;
+  hosting?: boolean; // this device is hosting and waiting for a peer to scan
 };
 
 // Compact connection banner above the transcript: a colored dot + a monospace
 // status line. Mirrors the "OFFLINE · ON DEVICE" treatment used elsewhere.
-export const LiveStatusBar = ({ status, peers, error }: Props) => {
+export const LiveStatusBar = ({ status, peers, error, hosting = false }: Props) => {
   const colors = useTheme();
 
   const dot =
@@ -24,11 +25,15 @@ export const LiveStatusBar = ({ status, peers, error }: Props) => {
   const label =
     status === 'connected'
       ? `CONNECTED · ${peers} PEER${peers === 1 ? '' : 'S'} · ON DEVICE`
-      : status === 'searching'
-        ? 'SEARCHING FOR PEER · ON DEVICE'
-        : status === 'error'
-          ? (error ?? 'CONNECTION FAILED').toUpperCase()
-          : 'NOT CONNECTED';
+      : status === 'error'
+        ? (error ?? 'CONNECTION FAILED').toUpperCase()
+        : hosting
+          ? 'HOSTING · WAITING FOR A PHONE TO JOIN'
+          : status === 'connecting'
+            ? 'CONNECTING · ACCEPT ON OTHER PHONE'
+            : status === 'searching'
+              ? 'SEARCHING FOR PEER · ON DEVICE'
+              : 'NOT CONNECTED';
 
   return (
     <View

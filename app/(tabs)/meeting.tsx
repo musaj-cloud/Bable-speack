@@ -3,6 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { HistoryShortcut } from '@/components/HistoryShortcut';
 import { HomeHeader } from '@/components/HomeHeader';
 import { LanguageBar } from '@/components/LanguageBar';
+import { LiveShortcut } from '@/components/LiveShortcut';
 import { MeetingControls } from '@/components/MeetingControls';
 import { MeetingEmptyState } from '@/components/MeetingEmptyState';
 import { MeetingTranscript } from '@/components/MeetingTranscript';
@@ -10,19 +11,15 @@ import { RecordingStatus } from '@/components/RecordingStatus';
 import { useMeetingSession } from '@/hooks/useMeetingSession';
 import { useTheme } from '@/hooks/useTheme';
 import { formatDuration } from '@/lib/datetime';
-import { useLanguageStore } from '@/store/useLanguageStore';
 import { useMeetingStore } from '@/store/useMeetingStore';
 
-// Meeting: a live, two-sided conversation on one phone. Each side holds its
-// button to speak; their words are transcribed, translated, shown, and spoken
-// back to the other person — all on device. Stopping summarizes the whole talk.
+// Meeting: record a whole talk on one phone, then translate + summarize it. Pick
+// the spoken language and the language you need, tap to record, tap to stop —
+// BabelSpeak transcribes, translates each line, and summarizes, all on device.
 export default function Meeting() {
   const colors = useTheme();
-  const { talking, begin, finish, talkStart, talkEnd } = useMeetingSession();
-  const { status, durationSec, segments, summary, error, saved, busy, reset, save } =
-    useMeetingStore();
-  const sourceLang = useLanguageStore((s) => s.sourceLang);
-  const targetLang = useLanguageStore((s) => s.targetLang);
+  const { recording, toggle } = useMeetingSession();
+  const { status, durationSec, segments, summary, error, saved, reset, save } = useMeetingStore();
 
   const resting = status === 'idle';
   // Languages are chosen before a session and locked once it starts.
@@ -34,32 +31,31 @@ export default function Meeting() {
       <HomeHeader />
 
       <View className="flex-1 gap-3 px-5 pb-4">
-        {resting && <HistoryShortcut label="SAVED SESSIONS" filter="meeting" />}
+        {resting && (
+          <View className="flex-row items-center justify-between">
+            <LiveShortcut />
+            <HistoryShortcut label="SAVED SESSIONS" filter="meeting" />
+          </View>
+        )}
         {resting && <LanguageBar middle="swap" />}
 
         {resting ? (
           <MeetingEmptyState />
         ) : (
           <>
-            <RecordingStatus duration={formatDuration(durationSec)} recording={status === 'live'} />
+            <RecordingStatus duration={formatDuration(durationSec)} recording={status === 'recording'} />
             <MeetingTranscript segments={segments} />
           </>
         )}
 
         <MeetingControls
           status={status}
-          talking={talking}
-          busy={busy}
-          youLabel={sourceLang.toUpperCase()}
-          themLabel={targetLang.toUpperCase()}
+          recording={recording}
           summary={summaryBullets}
           saved={saved}
-          onBegin={begin}
-          onFinish={finish}
+          onToggleRecord={toggle}
           onReset={reset}
           onSave={save}
-          onTalkStart={talkStart}
-          onTalkEnd={talkEnd}
         />
       </View>
     </SafeAreaView>

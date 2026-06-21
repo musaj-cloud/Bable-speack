@@ -33,7 +33,10 @@ const OUT = path.join(root, 'bare', 'p2p.bundle.js');
 // Same mobile hosts QVAC's Expo plugin packs for (android + iOS device/sim).
 const HOSTS = ['android-arm64', 'ios-arm64', 'ios-arm64-simulator', 'ios-x64-simulator'];
 
-const barePackBin = path.join(path.dirname(require.resolve('bare-pack/package.json')), 'bin.js');
+// Resolve bare-pack's bin via its `./package` export — `bare-pack/package.json`
+// is NOT exposed in its `exports` map, so resolving that throws
+// ERR_PACKAGE_PATH_NOT_EXPORTED. This mirrors @qvac/sdk's own bundler exactly.
+const barePackBin = path.join(path.dirname(require.resolve('bare-pack/package')), 'bin.js');
 
 const args = [
   ...HOSTS.flatMap((h) => ['--host', h]),

@@ -32,7 +32,10 @@ const SILENCE_HANG_MS = 1100; // quiet-after-speech before we auto-stop
 const MIN_SPEECH_MS = 300; // need this much speech before trusting "spoke"
 const MAX_MS = 20000; // hard safety cap so it can never run forever
 
-type StartOpts = { onAutoStop?: () => void };
+// vad: when true (default) the recorder ends itself after a quiet pause; when
+// false it only ever auto-stops at the MAX_MS safety cap, so the user controls
+// start and stop with explicit taps (pure tap-to-record for Converse).
+type StartOpts = { onAutoStop?: () => void; vad?: boolean };
 
 export const useVoiceRecorder = () => {
   const recorder = useAudioRecorder(RECORDING_OPTIONS);
@@ -71,6 +74,7 @@ export const useVoiceRecorder = () => {
       // the user has spoken and then gone quiet (or the safety cap is hit). The
       // metering value lives on getStatus() — the status event doesn't carry it.
       if (opts?.onAutoStop) {
+        const vad = opts.vad ?? true;
         stopped.current = false;
         let spokeMs = 0; // consecutive speech accumulated
         let everSpoke = false;
@@ -86,7 +90,9 @@ export const useVoiceRecorder = () => {
           } else {
             spokeMs = 0;
           }
-          const wentQuiet = everSpoke && now - lastLoud >= SILENCE_HANG_MS;
+          // With vad off, only the hard safety cap can end the capture — the user
+          // stops by tapping the mic again.
+          const wentQuiet = vad && everSpoke && now - lastLoud >= SILENCE_HANG_MS;
           if ((wentQuiet || durationMillis >= MAX_MS) && !stopped.current) {
             stopped.current = true;
             clearTimer();

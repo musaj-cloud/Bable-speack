@@ -2,7 +2,15 @@
 // On-device speech-to-text via QVAC Whisper (whisper-tiny, multilingual).
 // A model is loaded once per source language, cached, and reused. Everything
 // runs locally — the recorded audio never leaves the device.
-import { loadModel, transcribe, transcribeStream, unloadModel, WHISPER_TINY } from '@qvac/sdk';
+import {
+  loadModel,
+  transcribe,
+  transcribeStream,
+  unloadModel,
+  VAD_SILERO_5_1_2,
+  WHISPER_TINY,
+} from '@qvac/sdk';
+import type { ModelProgressFn } from '@/lib/qvac';
 
 // Whisper generation config (mobile-friendly subset of the QVAC reference
 // example — no GPU flags, single fast greedy pass).
@@ -14,6 +22,7 @@ type WhisperConfig = {
   suppress_blank?: boolean;
   suppress_nst?: boolean;
   temperature?: number;
+  vadModelSrc?: typeof VAD_SILERO_5_1_2; // required for streaming VAD events
 };
 
 // Same loadModel overload gotcha as Bergamot/embeddings: a model descriptor
@@ -22,6 +31,7 @@ type WhisperConfig = {
 const loadWhisperRaw = loadModel as unknown as (options: {
   modelSrc: typeof WHISPER_TINY;
   modelConfig: WhisperConfig;
+  onProgress?: ModelProgressFn;
 }) => Promise<string>;
 
 const WHISPER_GEN: WhisperConfig = {
@@ -31,17 +41,23 @@ const WHISPER_GEN: WhisperConfig = {
   suppress_blank: true,
   suppress_nst: true,
   temperature: 0,
+  // Live streaming (transcribeStream + emitVadEvents) needs a voice-activity
+  // model loaded alongside Whisper to detect end-of-turn — without it the SDK
+  // throws "VAD model name is required for Whisper transcription". Loaded once
+  // with the model; harmless for the batch transcribe path.
+  vadModelSrc: VAD_SILERO_5_1_2,
 };
 
 // One loaded whisper model per source language (language is baked in at load).
 const cache = new Map<string, Promise<string>>();
 
-const getWhisperModel = (lang: string): Promise<string> => {
+const getWhisperModel = (lang: string, onProgress?: ModelProgressFn): Promise<string> => {
   let model = cache.get(lang);
   if (!model) {
     model = loadWhisperRaw({
       modelSrc: WHISPER_TINY,
       modelConfig: { ...WHISPER_GEN, language: lang },
+      onProgress,
     }).catch((err) => {
       cache.delete(lang); // drop the failed load so the next call can retry
       throw err;
@@ -50,6 +66,12 @@ const getWhisperModel = (lang: string): Promise<string> => {
   }
   return model;
 };
+
+// Preload the Whisper (+VAD) model for a language so the first transcription —
+// batch or streaming — is instant and never races a download. Cached, so it's
+// safe to call repeatedly. Used by the after-onboarding warmup (lib/warmup.ts).
+export const warmTranscription = (lang: string, onProgress?: ModelProgressFn): Promise<string> =>
+  getWhisperModel(lang, onProgress);
 
 // whisper.cpp opens a real filesystem path — strip the file:// URI scheme.
 const toPath = (uri: string): string => uri.replace(/^file:\/\//, '');

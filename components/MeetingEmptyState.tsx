@@ -17,11 +17,11 @@ export const MeetingEmptyState = () => {
       </View>
 
       <Text style={{ ...typography.h3, color: colors.textPrimary }} className="text-center">
-        Talk across languages
+        Record &amp; understand
       </Text>
       <Text style={{ ...typography.bodyMd, color: colors.textSecondary }} className="text-center">
-        Start a session, then hold your side to speak. BabelSpeak translates each turn aloud for the
-        other person — live, and entirely on device.
+        Pick the spoken language and the one you need, then record the whole talk. On stop, BabelSpeak
+        transcribes it, translates it, and summarizes it for you — entirely on device.
       </Text>
     </View>
   );

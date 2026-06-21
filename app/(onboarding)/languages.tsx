@@ -6,6 +6,7 @@ import { LanguagePairPreview } from '@/components/LanguagePairPreview';
 import { LanguagePickerCard } from '@/components/LanguagePickerCard';
 import { LanguagePickerModal } from '@/components/LanguagePickerModal';
 import { LanguageSwapButton } from '@/components/LanguageSwapButton';
+import { OfflineLanguagesPicker } from '@/components/OfflineLanguagesPicker';
 import { OnboardingFooter } from '@/components/OnboardingFooter';
 import { OnboardingProgress } from '@/components/OnboardingProgress';
 import { typography } from '@/constants/typography';
@@ -62,6 +63,10 @@ export default function Languages() {
 
         <View className="mt-8">
           <LanguagePairPreview sourceCode={sourceLang} targetCode={targetLang} />
+        </View>
+
+        <View className="mt-5">
+          <OfflineLanguagesPicker />
         </View>
 
         <View className="flex-1" />

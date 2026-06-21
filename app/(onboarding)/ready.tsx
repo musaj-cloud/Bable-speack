@@ -39,7 +39,9 @@ export default function Ready() {
           onBack={() => router.back()}
           onContinue={() => {
             setCompleted(true);
-            router.replace('/(tabs)');
+            // Preload the on-device models once before entering the app, so the
+            // first translation is instant and never races a mid-use download.
+            router.replace('/preparing');
           }}
           continueLabel="Start Translating"
         />

@@ -41,6 +41,13 @@ export const WelcomeFeatureList = () => {
         chipText={colors.iconChipLavenderText}
         label={'Transcribe and translate\nmeetings'}
       />
+      <View style={{ height: 1, backgroundColor: colors.border }} />
+      <FeatureRow
+        icon="wifi-tethering"
+        chipBg={colors.iconChipBlue}
+        chipText={colors.iconChipBlueText}
+        label={'Live chat across phones,\npeer-to-peer'}
+      />
     </View>
   );
 };
