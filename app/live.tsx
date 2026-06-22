@@ -71,7 +71,10 @@ export default function Live() {
         <QRScanner onScanned={onScanned} onCancel={() => setScanning(false)} />
       ) : (
         <View className="flex-1 px-5 pt-2 pb-4">
-          <LanguageBar middle="swap" />
+          {/* Static arrow, not swap: the mirrored P2P design uses only sourceLang
+              ("my language"). A swap here would set sourceLang wrong and break the
+              conversation, so the swap control is intentionally removed. */}
+          <LanguageBar middle="arrow" />
 
           {idle ? (
             <View className="flex-1 justify-center">
