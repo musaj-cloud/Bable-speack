@@ -37,7 +37,7 @@ export type P2PWireMessage = {
 export type P2PHandlers = {
   onStatus: (state: P2PState, peers: number, message?: string) => void;
   onMessage: (msg: P2PWireMessage) => void;
-  // Host only: the LAN pairing info to encode in the QR (see hostP2P).
+  // Host only: the pairing info (the code) to encode in the QR (see hostP2P).
   onPairInfo?: (info: Pairing) => void;
 };
 
@@ -97,18 +97,18 @@ const ensureWorklet = () => {
   rpc = new RPC(worklet.IPC as never, onIncoming as never);
 };
 
-// Host a session: run a local DHT bootstrap node and announce `code`. The worklet
-// replies with onPairInfo (LAN address) for the QR, then status updates. This is
-// the fully-offline path — the joiner reaches us directly over the local network.
+// Host a session: announce `code` on the Holepunch DHT. The worklet replies with
+// onPairInfo (the code) for the QR, then status updates. Both phones need to reach
+// the internet (Wi-Fi or mobile data) so the DHT can discover + hole-punch them.
 export const hostP2P = (code: string, h: P2PHandlers): void => {
   handlers = h;
   ensureWorklet();
   rpc!.event(CMD_HOST).send(code, 'utf8');
 };
 
-// Join a session. With `target.host`/`port` (from a scanned QR) we connect
-// directly over the LAN with no internet; with only a code we fall back to the
-// public DHT (needs internet reachable once). Streams status + messages to `h`.
+// Join a session from a scanned QR (or typed code): both phones hash the same code
+// to the same DHT topic and connect over the internet. Streams status + messages
+// to `h`.
 export const joinP2P = (target: Pairing, h: P2PHandlers): void => {
   handlers = h;
   ensureWorklet();

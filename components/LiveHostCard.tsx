@@ -9,8 +9,8 @@ type Props = {
 };
 
 // Shown on the HOST phone while waiting for a peer: a QR for the other phone to
-// scan, plus the code to type if scanning isn't possible. Pairing is fully
-// offline — the host runs a local DHT bootstrap node on the LAN.
+// scan, plus the code to type if scanning isn't possible. Pairing is over the
+// Holepunch DHT, so both phones need internet (Wi-Fi or mobile data) to connect.
 export const LiveHostCard = ({ qr, code }: Props) => {
   const colors = useTheme();
 
@@ -30,8 +30,8 @@ export const LiveHostCard = ({ qr, code }: Props) => {
       </View>
 
       <Text style={{ ...typography.bodyMd, color: colors.textSecondary }} className="text-center">
-        Point the other phone’s camera here. No internet needed — you’re connecting
-        directly over the local network.
+        Point the other phone’s camera here. Both phones need to be online (Wi-Fi or
+        mobile data) to find each other — then the link is direct, peer to peer.
       </Text>
     </View>
   );

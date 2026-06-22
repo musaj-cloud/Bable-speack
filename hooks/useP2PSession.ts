@@ -5,9 +5,9 @@
 // own language and no audio ever leaves a device. Translation/TTS run locally, so
 // the experience is as fast as Converse.
 //
-// Pairing is QR/code over Hyperswarm (lib/p2p.ts -> bare worklet): the host runs a
-// local DHT bootstrap node and shows a QR; the joiner scans it (or types the code)
-// and they meet on the same DHT topic. Fully offline on a shared LAN/hotspot.
+// Pairing is QR/code over Hyperswarm (lib/p2p.ts -> bare worklet): the host shows
+// a QR; the joiner scans it (or types the code) and they meet on the same Holepunch
+// DHT topic. Both phones need internet (Wi-Fi or mobile data) to discover each other.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useVoiceCapture } from '@/hooks/useVoiceCapture';
 import {
@@ -77,7 +77,7 @@ export const useP2PSession = () => {
   );
 
   // Status + message handlers shared by host and join. Hosting also receives the
-  // LAN pairing info (onPairInfo) to render as a QR.
+  // pairing info (onPairInfo) — the code — to render as a QR.
   const handlers = useCallback(
     (): P2PHandlers => ({
       onStatus: (state, peers, message) =>
@@ -88,8 +88,8 @@ export const useP2PSession = () => {
     [setStatus, setError, setPairInfo, handleIncoming]
   );
 
-  // Host a session: the worklet runs a local DHT bootstrap node and reports its
-  // LAN address (onPairInfo) for the QR. Fully offline — no internet required.
+  // Host a session: the worklet announces the topic on the Holepunch DHT and
+  // reports the code (onPairInfo) for the QR. Needs internet to find the peer.
   const host = useCallback(
     (preferred?: string) => {
       reset();
@@ -103,7 +103,7 @@ export const useP2PSession = () => {
     [reset, setError, handlers]
   );
 
-  // Join a session — from a scanned QR (direct LAN) or a typed code (public DHT).
+  // Join a session — from a scanned QR or a typed code (both over the public DHT).
   const join = useCallback(
     (target: Pairing) => {
       reset();
@@ -117,7 +117,7 @@ export const useP2PSession = () => {
     [reset, setStatus, setError, handlers]
   );
 
-  // Convenience for the typed-code fallback (no host/port → public DHT).
+  // Convenience for the typed-code fallback (same DHT pairing as a scanned QR).
   const connect = useCallback((code: string) => join({ code }), [join]);
 
   const disconnect = useCallback(() => {

@@ -14,9 +14,10 @@ type Props = {
   onJoinCode: () => void; // join using the typed code (DHT fallback)
 };
 
-// Idle entry for Live Conversation. Pairing is QR/code over Hyperswarm: host a
-// session to show a QR, scan the other phone's QR, or type a shared code. Each
-// phone translates locally — only text crosses the wire.
+// Idle entry for Live Conversation. Pairing is QR/code over the Holepunch DHT:
+// host a session to show a QR, scan the other phone's QR, or type a shared code.
+// Both phones need internet to find each other; each phone translates locally —
+// only text crosses the wire.
 export const LiveStartCard = ({ code, onChangeCode, onHost, onScan, onJoinCode }: Props) => {
   const colors = useTheme();
 
@@ -60,9 +61,18 @@ export const LiveStartCard = ({ code, onChangeCode, onHost, onScan, onJoinCode }
           Talk across phones
         </Text>
         <Text style={{ ...typography.bodyMd, color: colors.textSecondary }} className="text-center">
-          Connect directly to another phone — peer to peer, no internet. Each phone
-          reads and hears in its own language.
+          Connect directly to another phone — peer to peer. Each phone reads and
+          hears in its own language.
         </Text>
+        <View
+          style={{ backgroundColor: colors.bgCardInner, borderColor: colors.border, borderWidth: 1, borderRadius: 99 }}
+          className="flex-row items-center gap-2 px-3 py-1.5"
+        >
+          <MaterialIcons name="wifi" size={14} color={colors.warningAmber} />
+          <Text style={{ ...typography.caption, color: colors.textSecondary }}>
+            INTERNET NEEDED TO CONNECT
+          </Text>
+        </View>
       </View>
 
       {action('qr-code-2', 'Start with a code', 'Show a QR for the other phone to scan', onHost, true)}

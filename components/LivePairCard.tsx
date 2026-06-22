@@ -9,9 +9,9 @@ type Props = {
 };
 
 // Compact "enter a code instead" fallback for pairing, shown under the scan/host
-// actions on the Live start screen. Typing a code (no scan) connects via the
-// public DHT, so it needs the internet reachable once — scanning a QR is the
-// fully-offline path. Both phones must use the same code.
+// actions on the Live start screen. Both phones hash the same code to the same
+// Holepunch DHT topic and connect over the internet. Both phones must use the
+// same code.
 export const LivePairCard = ({ code, onChangeCode, onConnect }: Props) => {
   const colors = useTheme();
   const ready = code.trim().length >= 3;

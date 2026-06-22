@@ -15,27 +15,20 @@
 // into a worklet bundle with `npm run build:p2p` (see bare/README.md).
 import RPC from 'bare-rpc'
 import Hyperswarm from 'hyperswarm'
-import DHT from 'hyperdht'
 import crypto from 'hypercore-crypto'
 import b4a from 'b4a'
-import os from 'bare-os'
 
 // RPC command ids — MUST stay in sync with lib/p2p.ts.
-const CMD_CONNECT = 1 // RN -> worklet: join a session (JSON { code, host?, port? })
+const CMD_CONNECT = 1 // RN -> worklet: join a session (JSON { code })
 const CMD_SEND = 2 // RN -> worklet: broadcast a JSON message to peers
 const CMD_DISCONNECT = 3 // RN -> worklet: leave the swarm
-const CMD_HOST = 4 // RN -> worklet: host a session for a code (offline-direct)
+const CMD_HOST = 4 // RN -> worklet: host a session for a code
 const CMD_STATUS = 10 // worklet -> RN: connection state changed
 const CMD_MESSAGE = 11 // worklet -> RN: a message arrived from a peer
-const CMD_PAIRINFO = 12 // worklet -> RN: host pairing info { code, host, port } for the QR
+const CMD_PAIRINFO = 12 // worklet -> RN: host pairing info { code } for the QR
 const CMD_LOG = 13 // worklet -> RN: diagnostic line (surfaced in the Metro console)
 
-// Fixed UDP port the host's local DHT bootstrap node listens on. The joiner is
-// told this in the pairing QR, so both ends meet on the LAN with no internet.
-const BOOTSTRAP_PORT = 49737
-
 let swarm = null
-let bootstrap = null // local DHT bootstrap node, only set while hosting
 const peers = new Set()
 
 const rpc = new RPC(BareKit.IPC, (req) => {
@@ -64,78 +57,53 @@ const log = (msg) => {
 const topicFor = (code) =>
   crypto.hash(b4a.from(`babelspeak/p2p/v1/${code.trim().toLowerCase()}`))
 
-// First non-internal IPv4 — the address the other phone uses to reach us on the
-// local network. Works on a phone hotspot with no SIM and no internet.
-function lanIPv4() {
-  const ifaces = os.networkInterfaces()
-  for (const name of Object.keys(ifaces)) {
-    for (const ni of ifaces[name]) {
-      if (ni.family === 'IPv4' && !ni.internal) return ni.address
-    }
-  }
-  return null
-}
-
-// HOST: run a local DHT bootstrap node so peer discovery needs NO internet, join
-// the topic, and hand our LAN address back to the UI to put in the pairing QR.
+// HOST: announce the pairing topic on the Holepunch DHT and hand the code back to
+// the UI for the QR. Hyperswarm does discovery + NAT hole-punching over the DHT,
+// so both phones only need to reach the internet (Wi-Fi or mobile data).
 async function host(code) {
   await leave()
   const trimmed = (code || '').trim()
   if (!trimmed) return status('error', { message: 'Empty pairing code' })
-  const ip = lanIPv4()
-  if (!ip) {
-    return status('error', {
-      message: 'No local network. Turn on a hotspot or join the same Wi-Fi, then try again.',
-    })
-  }
   try {
-    bootstrap = DHT.bootstrapper(BOOTSTRAP_PORT, ip)
-    if (bootstrap.ready) await bootstrap.ready()
-    const nodes = [`${ip}:${BOOTSTRAP_PORT}`]
-    swarm = new Hyperswarm({ bootstrap: nodes })
+    swarm = new Hyperswarm()
     swarm.on('connection', onConnection)
-    // Hand the LAN address to the UI for the QR before announcing the topic.
-    rpc.event(CMD_PAIRINFO).send(
-      JSON.stringify({ code: trimmed, host: ip, port: BOOTSTRAP_PORT }),
-      'utf8'
-    )
+    // Hand the code to the UI for the QR before announcing the topic.
+    rpc.event(CMD_PAIRINFO).send(JSON.stringify({ code: trimmed }), 'utf8')
     status('searching')
     // Host is server-ONLY: it announces the topic and accepts the joiner's
     // connection. Pairing one server with one client (see join) gives exactly one
     // connection that fires 'connection' on both ends — server+client on both
-    // sides over a single shared bootstrap can mis-pair (or self-connect) so that
-    // the joiner shows "connected" while the host's accept side never fires.
+    // sides can mis-pair (or self-connect) so that the joiner shows "connected"
+    // while the host's accept side never fires.
     const discovery = swarm.join(topicFor(trimmed), { server: true, client: false })
     await discovery.flushed()
-    log(`host: announced topic on ${ip}:${BOOTSTRAP_PORT}, waiting for a joiner`)
+    log('host: announced topic on the DHT, waiting for a joiner')
   } catch (err) {
     log(`host: error ${err && err.message ? err.message : String(err)}`)
     status('error', { message: err && err.message ? err.message : String(err) })
   }
 }
 
-// JOIN: payload is JSON { code, host?, port? }. With host/port we point at the
-// host phone's local bootstrap (fully-offline LAN); without them we fall back to
-// the public DHT (needs internet reachable once). A raw code string also works.
+// JOIN: payload is JSON { code } (or a raw code string). Look up the host's
+// announced topic on the Holepunch DHT and connect; Hyperswarm handles discovery
+// and NAT hole-punching over the internet.
 async function join(payload) {
   await leave()
   let code = ''
-  let nodes = null
   try {
     const p = JSON.parse(payload)
     code = (p.code || '').trim()
-    if (p.host && p.port) nodes = [`${p.host}:${p.port}`]
   } catch {
     code = (payload || '').trim() // backwards-compatible raw-code path
   }
   if (!code) return status('error', { message: 'Empty pairing code' })
   try {
-    swarm = nodes ? new Hyperswarm({ bootstrap: nodes }) : new Hyperswarm()
+    swarm = new Hyperswarm()
     swarm.on('connection', onConnection)
     status('searching')
     // Joiner is client-ONLY: it looks up the host's announced topic and initiates
     // the single connection (host is server-only — see host()).
-    log(`joiner: looking up topic ${nodes ? `via ${nodes[0]}` : 'on public DHT'}`)
+    log('joiner: looking up topic on the DHT')
     const discovery = swarm.join(topicFor(code), { server: false, client: true })
     await discovery.flushed()
     log('joiner: lookup flushed, awaiting connection')
@@ -197,15 +165,6 @@ async function leave() {
       await s.destroy()
     } catch {
       // never fully started
-    }
-  }
-  if (bootstrap) {
-    const b = bootstrap
-    bootstrap = null
-    try {
-      await b.destroy()
-    } catch {
-      // bootstrap node never fully started
     }
   }
   status('idle')

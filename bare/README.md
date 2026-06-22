@@ -94,25 +94,24 @@ as unavailable and the Live screen shows a clear "not built yet" state. Phases
 1–6 never import anything here, so a missing or failed P2P bundle cannot break
 the build or the rest of the app.
 
-## Pairing & offline note
+## Pairing note
 
-Two ways to pair (both hash the same code to a 32-byte `hypercore-crypto` topic):
+Pairing is the standard Holepunch way — both phones hash the same code to a
+32-byte `hypercore-crypto` topic and meet on the **public DHT**:
 
-1. **Scan a QR — fully offline (recommended for the stage demo).** The host phone
-   (`CMD_HOST`) runs a **local HyperDHT bootstrap node** on its LAN address
-   (found via `bare-os` `networkInterfaces()`, port `49737`) and shows a QR
-   encoding `BSPK1|<code>|<host>|<port>` (see `lib/pairing.ts`). The joiner scans
-   it (`expo-camera`) and connects with `new Hyperswarm({ bootstrap: [host:port] })`
-   — discovery happens entirely on the LAN, **no internet, no SIM**. Works on a
-   phone hotspot with no data (Xender-style: one phone *is* the network).
-2. **Type a code — public DHT fallback.** No host/port, so it uses the default
-   internet bootstrap nodes (reachable once); fine when there's connectivity.
+1. **Scan a QR (recommended).** The host phone (`CMD_HOST`) announces the topic on
+   the DHT and shows a QR encoding just `BSPK1|<code>` (see `lib/pairing.ts`). The
+   joiner scans it (`expo-camera`) and joins the same topic; Hyperswarm handles
+   discovery and NAT hole-punching, then the link is a **direct peer-to-peer**
+   stream.
+2. **Type a code.** Same pairing without scanning — both phones enter the same
+   code.
 
-For the airplane-mode demo: one phone enables its hotspot (no SIM/internet
-needed), the other joins that Wi-Fi, then scan the QR. After they connect the
-link is direct peer-to-peer and stays up offline.
+> **Internet is required to connect.** The DHT's bootstrap nodes are reached over
+> the internet (Wi-Fi or mobile data) so the two phones can find each other.
+> Once paired, only translated text crosses the wire — never audio. (The previous
+> LAN/hotspot bootstrap path — `hyperdht` `bootstrapper` + `bare-os` LAN IP — was
+> removed; `host`/`port` are no longer part of the pairing payload.)
 
-> Native deps added for this: `bare-os` + `hyperdht` are already in the tree
-> (Hyperswarm pulls them in), so this is still just a `npm run build:p2p` re-pack
-> — no new React-Native native module. QR generation uses the pure-JS encoder in
-> `qrcode-terminal` (pinned in package.json); QR scanning reuses `expo-camera`.
+> QR generation uses the pure-JS encoder in `qrcode-terminal` (pinned in
+> package.json); QR scanning reuses `expo-camera`.

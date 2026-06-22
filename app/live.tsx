@@ -18,8 +18,8 @@ import { useP2PStore } from '@/store/useP2PStore';
 
 // Phase 7 — Live Conversation (two phones, 1:1). Pairing is QR/code over
 // Hyperswarm: one phone shows a QR, the other scans it (or types the code), and
-// they meet on the same DHT topic over the shared LAN/hotspot. Each phone
-// translates locally — only text crosses the wire, never audio.
+// they meet on the same Holepunch DHT topic (both phones need internet to find
+// each other). Each phone translates locally — only text crosses the wire, never audio.
 export default function Live() {
   const colors = useTheme();
   const { available, talking, host, join, connect, disconnect, toggleTalk } = useP2PSession();
